@@ -24,3 +24,11 @@ Gemma-2B: https://hf.co/google/gemma-2b
 PaLI-3: https://arxiv.org/abs/2310.09199
 
 Gemma: https://hf.co/blog/gemma
+
+
+https://www.kaggle.com/code/nilaychauhan/fine-tune-gemma-models-in-keras-using-lora
+
+https://www.kaggle.com/code/fchollet/paligemma-intro-captioning-vqa-detection-ocr#Image-description-&-visual-question-answering
+
+https://blog.csdn.net/qinduohao333/article/details/136264993
+
