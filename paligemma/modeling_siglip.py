@@ -8,12 +8,12 @@ class SiglipVisionConfig:
     def __init__(
         self, 
         hidden_size=768, 
-        intermidiate_size=3072,
+        intermediate_size=3072,
         num_hidden_layers=12,
         num_attention_heads=12,
-        num_channels=3,     # 'RGB' 
-        image_size=224,     # 224, 448, 896
-        patch_size=16,      # size of each patch:16x16
+        num_channels=3,
+        image_size=224,
+        patch_size=16,
         layer_norm_eps=1e-6, 
         attention_dropout=0.0,
         num_image_tokens: int=None,
@@ -21,14 +21,14 @@ class SiglipVisionConfig:
     ):
         super().__init__() 
         
-        self.hidden_size = hidden_size, 
-        self.intermidiate_size = intermidiate_size, 
-        self.num_hidden_layers = num_hidden_layers,
-        self.num_attention_heads = num_attention_heads,
-        self.num_channels = num_channels, 
-        self.patch_size = patch_size, 
-        self.image_size = image_size, 
-        self.attention_dropout = attention_dropout,
+        self.hidden_size = hidden_size 
+        self.intermediate_size = intermediate_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.num_channels = num_channels
+        self.patch_size = patch_size
+        self.image_size = image_size
+        self.attention_dropout = attention_dropout
         self.num_image_tokens = num_image_tokens 
         self.layer_norm_eps = layer_norm_eps
 
@@ -127,7 +127,8 @@ class SiglipEncoder(nn.Module):
         for encoder_layer in self.layers: 
             hidden_states = encoder_layer(hidden_states)
         return hidden_states 
-    
+
+   
 class SiglipEncoderLayer(nn.Module):
     def __init__(self, config: SiglipVisionConfig):
         super().__init__()
@@ -215,13 +216,13 @@ class SiglipMLP(nn.Module):
         super().__init__() 
         self.config = config 
         
-        self.fc1 = nn.Linear(config.hidden_size, config.intermidiate_size)
-        self.fc2 = nn.Linear(config.intermidiate_size, config.hidden_size)
+        self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
+        self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # hidden_states: -> [batch_size, num_patchs, embed_dim] ->->->
         hidden_states = self.fc1(hidden_states)
-        hidden_states = nn.funcitonal.gelu(hidden_states, approximate="tanh")
+        hidden_states = nn.functional.gelu(hidden_states, approximate="tanh")
         hidden_states = self.fc2(hidden_states)
         return hidden_states
     

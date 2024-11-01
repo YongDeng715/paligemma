@@ -32,7 +32,9 @@ def load_hf_model(
     # create the model using the configuration 
     model = PaliGemmaForConditionalGeneration(config).to(device) 
     # load the state dict of the model
-    model.load_state_dict(tensors) 
+    model.load_state_dict(tensors, strict=False) 
     
-    model.tie_wieghts()
+    # Tie weights
+    model.tie_weights()
+    
     return (model, tokenizer)

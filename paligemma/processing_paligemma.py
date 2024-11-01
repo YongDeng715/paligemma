@@ -8,8 +8,8 @@ import torch
 IMAGENET_STANDARD_MEAN = [0.5, 0.5, 0.5] 
 IMAGENET_STANDARD_STD = [0.5, 0.5, 0.5]
 
-def add_image_tokens_to_prompts(perfix_prompt, bos_token, image_seq_len, image_token): 
-    return f"{image_token * image_seq_len}{bos_token}{perfix_prompt}\n"
+def add_image_tokens_to_prompts(prefix_prompt, bos_token, image_seq_len, image_token): 
+    return f"{image_token * image_seq_len}{bos_token}{prefix_prompt}\n"
     # Quoting from the blog (https://huggingface.co/blog/paligemma#detailed-inference-process):
     #   The input text is tokenized normally.
     #   A <bos> token is added at the beginning, and an additional newline token (\n) is appended.
@@ -93,7 +93,7 @@ class PaliGemmaProcessor:
             f"<loc{i:04d}>" for i in range(1024)
         ]   # These tokens are used for object detection (bounding boxes)
         EXTRA_TOKENS += [
-            f"<seg{i:03d}>" for i in range(1024)
+            f"<seg{i:03d}>" for i in range(128)
         ]   # These tokens are used for object segmentation (pixel-wise masks)
         tokenizer.add_tokens(EXTRA_TOKENS)
         
@@ -116,7 +116,7 @@ class PaliGemmaProcessor:
             images, 
             size=(self.image_size, self.image_size), 
             resample=Image.Resampling.BICUBIC, 
-            resale_factor=1 / 255.0, 
+            rescale_factor=1 / 255.0, 
             image_mean=IMAGENET_STANDARD_MEAN,
             image_std=IMAGENET_STANDARD_STD,
         )

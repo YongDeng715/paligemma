@@ -31,7 +31,7 @@ def _sample_top_p(probs: torch.Tensor, p: float):
     probs_sort, probs_idx = torch.sort(probs, dim=-1, descending=True) 
     probs_sum = torch.cumsum(probs_sort, dim=-1)
     # Substracting "probs_sort" shifts the cumulative sum by 1 postiton to the right before masking.
-    mask = probs_sum - probs_sort > p 
+    mask = (probs_sum - probs_sort) > p 
     # Zero out all the probabilities that are not in the top p 
     probs_sort[mask] = 0.0
     # Redistribute the probalities of tokens that are not selected by the top P 
@@ -78,6 +78,7 @@ def test_inference(
         
         # Sample the next token 
         if do_sample:
+            # `temperature` is set to reduce gap between logits when doing sampling to get diverse selects.
             next_token_logits = torch.softmax(next_token_logits / temperature, dim=-1)
             next_token = _sample_top_p(next_token_logits, top_p)  
         else: 
@@ -93,7 +94,7 @@ def test_inference(
         # Append the next token to the input. 
         input_ids = next_token.unsqueeze(-1) 
         attention_mask = torch.cat(
-            [attention_mask, torch.ones_like((1, 1), device=input_ids.device)], dim=-1 
+            [attention_mask, torch.ones((1, 1), device=input_ids.device)], dim=-1 
         )
         
     generated_tokens = torch.cat(generated_tokens, dim=-1) 
@@ -153,10 +154,10 @@ def main(
 if __name__ == "__main__":
     # fire.Fire(main)
     model_path = "../paligemma-weights/paligemma-3b-pt-224"
-    prompt = "where is the road located and why it's popular for tourists?"
+    prompt = "where is the road located?"
     image_file_path = "../test_images/image.png"
-    max_tokens_to_generate = 100
-    temperature = 0.8 
+    max_tokens_to_generate = 1000
+    temperature = 0.8
     top_p = 0.9
     do_sample = True
     only_cpu = False

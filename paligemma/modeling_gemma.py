@@ -64,10 +64,12 @@ class PaliGemmaConfig():
         self.vocab_size = vocab_size            #      
         self.projection_dim = projection_dim    #
         self.hidden_size = hidden_size
+        self.is_encoder_decoder = False
         self.pad_token_id = pad_token_id
         
         self.vision_config = SiglipVisionConfig(**vision_config)
-        self.text_config = GemmaConfig(**text_config, pad_token_id=pad_token_id)
+        self.text_config = text_config
+        self.text_config = GemmaConfig(**text_config, pad_token_id=pad_token_id) 
         
         self.vocab_size = self.text_config.vocab_size 
         self.text_config.num_image_tokens = (self.vision_config.image_size // self.vision_config.patch_size) ** 2
@@ -113,7 +115,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         super().__init__()
         self.config = config 
         
-        self.vision_model = SiglipVisionModel(config.vision_config)
+        self.vision_tower = SiglipVisionModel(config.vision_config)
         self.multi_modal_projector = PaliGemmaMultiModalProjector(config) # Linear Layer
         self.vocab_size = config.vocab_size
         
@@ -140,7 +142,8 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         # Image feature shape: [batch_size, num_patches(seq_length), hidden_size]
         scaled_image_features = image_features / (self.config.hidden_size ** 0.5)
         # Combine the embeddings of image tokens, text tokens and mask out all padding tokens 
-        final_embedding = torch.zeros(batch_size, seq_length, embed_dim, dytpe=inputs_embeds.dtype, device=inputs_embeds.device)
+        final_embedding = torch.zeros((batch_size, seq_length, embed_dim), \
+            dtype=inputs_embeds.dtype, device=inputs_embeds.device)
         
         text_mask = (input_ids != self.config.image_token_index) & (input_ids != self.pad_token_id)
         image_mask = (input_ids == self.config.image_token_index)
@@ -166,7 +169,8 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         
         #### CREATE ATTENTION MASK ####
         dtype, device = attention_mask.dtype, attention_mask.device
-        min_dtype = torch.finfo(dtype).min
+        # min_dtype = torch.finfo(dtype).min
+        
         q_len = inputs_embeds.shape[1]
         
         if kv_cache is None or kv_cache.num_items() == 0:
@@ -217,7 +221,7 @@ class PaliGemmaForConditionalGeneration(nn.Module):
         
         # 2. Merge text and images
         # [batch_size, num_channels, height, width] -> [batch_size, num_patches, embed_dim]
-        selected_image_feature = self.vision_model(pixel_values.to(inputs_embeds.dtype))
+        selected_image_feature = self.vision_tower(pixel_values.to(inputs_embeds.dtype))
         # [batch_size, num_patches, embed_dim] -> [batch_size, num_patches, hidden_size(projector_dim)]
         image_features = self.multi_modal_projector(selected_image_feature) 
         
@@ -261,6 +265,7 @@ class GemmaForCausalLM(nn.Module):
     
     def __init__(self, config: GemmaConfig):
         super().__init__()
+        self.config = config
         self.model = GemmaModel(config)
         self.vocab_size = config.vocab_size 
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
@@ -379,7 +384,7 @@ class GemmaDecoderLayer(nn.Module):
         
         self.mlp = GemmaMLP(config)
         self.input_layernorm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attn_layernorm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = GemmaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
     
     def forward(
         self, 
@@ -401,7 +406,7 @@ class GemmaDecoderLayer(nn.Module):
         hidden_states += residual 
         
         residual = hidden_states 
-        hidden_states = self.post_attn_layernorm(hidden_states)
+        hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states) 
         hidden_states += residual 
 
@@ -489,8 +494,8 @@ class GemmaAttention(nn.Module):
             key_states, value_states = kv_cache.update(key_states, value_states, self.layer_idx)
         
         # Repeat the key and values to match the number of the query. 
-        key_states = key_states.repeat_kv(key_states, self.num_key_value_groups)
-        value_states = value_states.repeat_kv(value_states, self.num_key_value_groups)
+        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups)
         # For the calculation: Q * K^T / sqrt(head_dim), shape: [bsz, num_heads_Q, seq_len_Q, seq_len_KV]
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
         
@@ -498,7 +503,7 @@ class GemmaAttention(nn.Module):
         attn_weights = attn_weights + attention_mask 
         # [bsz, num_heads_Q, seq_len_Q, seq_len_KV]
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype) 
-        attn_weights = attn_weights.dropout(attn_weights, p=self.dropout, training=self.training) 
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training) 
         attn_output = torch.matmul(attn_weights, value_states) 
         
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim): 
@@ -548,8 +553,8 @@ class GemmaRotaryEmbedding(nn.Module):
         self.base = base 
         
        # calculate the theta according to the formula: theta_i = base^(2i/dim), where i=0, 1, 2, ..., dim//2
-        self.inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim)) 
-        self.register_buffer("inv_freq", tensor=self.inv_freq, persistent=False)
+        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, dtype=torch.int64).float() / self.dim)) 
+        self.register_buffer("inv_freq", tensor=inv_freq, persistent=False)
         
     @torch.no_grad() 
     def forward(self, x, position_ids, seq_len=None): 
