@@ -10,8 +10,7 @@ how to make cross-entropy loss numerically stable?
 
 $$
 Softmax = \frac{c\cdot e^{a_i}}{c\cdot \sum_{k=1}^N e^{a_k}} = \frac{e^{a_i + \log c}}{\sum_{k=1} e^{a_k + \log c}}\\  
-
-make \ \ \log c = - \max_{i} a_i
+make \space \log c = - \max_{i} a_i
 $$
 
 Code implementation of CLIP:
